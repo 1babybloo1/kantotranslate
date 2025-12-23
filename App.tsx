@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useId } from 'react';
 import { translateWithSlang, speakText } from './services/geminiService';
-import { TranslationResult, LANGUAGES, SlangDetail, THEMES, ThemeType, ThemeConfig, HistoryItem } from './types';
+import { TranslationResult, LANGUAGES, SlangDetail, THEMES, ThemeType, ThemeConfig, HistoryItem, VibeMode } from './types';
 import LanguageSelector from './components/LanguageSelector';
 
 const STORAGE_KEY = 'kanto_history';
@@ -56,34 +56,69 @@ const SlangChip: React.FC<{ detail: SlangDetail, theme: ThemeConfig, lowPerf?: b
   );
 };
 
-const ErrorState: React.FC<{ message: string; onRetry: () => void; theme: ThemeConfig }> = ({ message, onRetry, theme }) => (
-  <div className="animate-in fade-in slide-in-from-top-4 duration-500" role="alert">
-    <div className="bg-red-500/10 border border-red-500/20 rounded-[2rem] p-6 text-center">
-      <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4" aria-hidden="true">
-        <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
+const ErrorState: React.FC<{ errorKey: string; onRetry: () => void; theme: ThemeConfig }> = ({ errorKey, onRetry, theme }) => {
+  const errorMap: Record<string, { title: string, message: string }> = {
+    'QUOTA_EXCEEDED': {
+      title: "Vibe overload",
+      message: "Our AI is strictly on a budget right now. Take a quick break and try again in a few minutes."
+    },
+    'SAFETY_BLOCK': {
+      title: "Content filter triggered",
+      message: "The vibe check failed. This specific text might contain words or concepts flagged by safety filters."
+    },
+    'CONFIG_ERROR': {
+      title: "System misalignment",
+      message: "There's an issue with the AI configuration. Our engineers (and spirits) are working on it."
+    },
+    'PARSE_ERROR': {
+      title: "Linguistic hiccup",
+      message: "The AI stuttered while processing that. Try simplifying the text slightly."
+    },
+    'OFFLINE': {
+      title: "Vibe signal lost",
+      message: "You're floating in offline space. Check your connection to get new translations."
+    },
+    'EMPTY_RESPONSE': {
+      title: "Silence from the void",
+      message: "The AI gave us nothing. Literally. Try entering more text!"
+    },
+    'UNKNOWN_ERROR': {
+      title: "Glitched in the matrix",
+      message: "Something went wrong that we didn't plan for. Re-vibe and try again?"
+    }
+  };
+
+  const { title, message } = errorMap[errorKey] || errorMap['UNKNOWN_ERROR'];
+
+  return (
+    <div className="animate-in fade-in slide-in-from-top-4 duration-500" role="alert">
+      <div className="bg-red-500/10 border border-red-500/20 rounded-[2rem] p-6 text-center">
+        <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4" aria-hidden="true">
+          <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-red-200 font-bold mb-1 uppercase tracking-wider text-xs">{title}</h3>
+        <p className="text-red-400/80 text-sm mb-4 leading-relaxed">{message}</p>
+        <button 
+          onClick={onRetry}
+          className="px-6 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest transition-all border border-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-950"
+        >
+          Try to Re-vibe
+        </button>
       </div>
-      <h3 className="text-red-200 font-bold mb-1">Translation Failed</h3>
-      <p className="text-red-400/80 text-sm mb-4">{message}</p>
-      <button 
-        onClick={onRetry}
-        className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-xs font-bold transition-all border border-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-950"
-      >
-        Try Again
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [sourceLang, setSourceLang] = useState('en');
   const [targetLang, setTargetLang] = useState('tl');
-  const [slangLevel, setSlangLevel] = useState(50);
+  const [vibeMode, setVibeMode] = useState<VibeMode>('casual');
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [activeThemeId, setActiveThemeId] = useState<ThemeType>('indigo');
   const [lowPerf, setLowPerf] = useState(false);
@@ -91,10 +126,8 @@ const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const theme = useMemo(() => THEMES.find(t => t.id === activeThemeId) || THEMES[0], [activeThemeId]);
-  const sliderId = useId();
   const inputAreaId = useId();
 
-  // Load history from local storage
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -117,9 +150,8 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Update history in local storage
   const updateHistory = (newItem: HistoryItem) => {
-    const newHistory = [newItem, ...history].slice(0, 20); // Limit to last 20
+    const newHistory = [newItem, ...history].slice(0, 20);
     setHistory(newHistory);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
   };
@@ -132,11 +164,16 @@ const App: React.FC = () => {
   };
 
   const handleTranslate = async () => {
-    if (!inputText.trim() || !isOnline) return;
+    if (!inputText.trim()) return;
+    if (!isOnline) {
+      setErrorKey('OFFLINE');
+      return;
+    }
+    
     setIsLoading(true);
-    setError(null);
+    setErrorKey(null);
     try {
-      const translation = await translateWithSlang(inputText, sourceLang, targetLang, slangLevel);
+      const translation = await translateWithSlang(inputText, sourceLang, targetLang, vibeMode);
       setResult(translation);
       updateHistory({
         id: crypto.randomUUID(),
@@ -144,12 +181,11 @@ const App: React.FC = () => {
         inputText: inputText.trim(),
         sourceLang,
         targetLang,
-        slangLevel,
+        vibeMode,
         result: translation
       });
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Something went wrong. Please check your connection.");
+      setErrorKey(err.message || 'UNKNOWN_ERROR');
     } finally {
       setIsLoading(false);
     }
@@ -159,8 +195,9 @@ const App: React.FC = () => {
     setInputText(item.inputText);
     setSourceLang(item.sourceLang);
     setTargetLang(item.targetLang);
-    setSlangLevel(item.slangLevel);
+    setVibeMode(item.vibeMode);
     setResult(item.result);
+    setErrorKey(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -183,21 +220,32 @@ const App: React.FC = () => {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleTranslate();
+    }
+  };
+
+  const vibeOptions: { id: VibeMode; label: string; desc: string }[] = [
+    { id: 'formal', label: 'Proper', desc: 'Textbook / Formal' },
+    { id: 'casual', label: 'Real Talk', desc: 'Fast & Natural' },
+    { id: 'taglish', label: 'Urban Mix', desc: 'Manila / Taglish' },
+  ];
+
   return (
     <div className={`min-h-screen bg-slate-950 text-slate-200 selection:bg-${theme.id}-500/30 transition-colors duration-700`}>
-      {/* Dynamic Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <div className={`absolute -top-24 -left-24 w-[40rem] h-[40rem] ${theme.glow} ${lowPerf ? 'blur-[80px] opacity-40' : 'blur-[140px] opacity-60 animate-pulse'} rounded-full transition-all duration-1000`} />
         <div className={`absolute bottom-[-10rem] right-[-10rem] w-[35rem] h-[35rem] ${theme.glow} ${lowPerf ? 'blur-[60px] opacity-20' : 'blur-[120px] opacity-30'} rounded-full transition-all duration-1000`} />
       </div>
 
       <main className="relative z-10 max-w-4xl mx-auto px-6 py-12 lg:py-16">
-        {/* Top Bar with Theme Selector */}
         <div className="flex justify-between items-center mb-12 flex-wrap gap-4">
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-${theme.id}-500/10 border border-${theme.id}-500/20 glass`} aria-label="App version and status">
               {!lowPerf && <span className={`w-2 h-2 rounded-full bg-${theme.accent} animate-pulse`} aria-hidden="true" />}
-              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v2.3 / Native</span>
+              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v2.6 / Native Flow</span>
             </div>
             
             {!isOnline && (
@@ -246,18 +294,16 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Header */}
         <header className="text-center mb-12">
           <h1 className={`text-6xl lg:text-8xl font-jakarta font-extrabold text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 tracking-tighter mb-4 ${!lowPerf ? 'animate-float' : ''}`}>
             Kanto
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            The world's first <span className={`text-${theme.accent} font-semibold transition-colors duration-500`}>Vibe-Aware</span> translator. Turning textbooks into real life.
+            The world's first <span className={`text-${theme.accent} font-semibold transition-colors duration-500`}>Vibe-Aware</span> translator. Optimized for native speed.
           </p>
         </header>
 
         <div className="grid gap-8">
-          {/* Main Translator Card */}
           <div className={`bg-slate-900/40 ${!lowPerf ? 'backdrop-blur-3xl' : ''} border border-white/5 rounded-[2.5rem] p-6 lg:p-10 shadow-2xl relative overflow-hidden group`}>
             {!lowPerf && (
               <div className="absolute top-0 -left-[100%] w-full h-full bg-gradient-to-r from-transparent via-white/[0.03] to-transparent skew-x-[-25deg] transition-all duration-1000 group-hover:left-[100%]" aria-hidden="true" />
@@ -278,52 +324,55 @@ const App: React.FC = () => {
             </div>
 
             <div className="mb-10">
-              <div className="flex justify-between items-center mb-6 px-1">
-                <div className="flex items-center gap-2">
-                  <label htmlFor={sliderId} className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    Kanto Intensity
-                  </label>
-                  <div className={`w-1.5 h-1.5 rounded-full bg-${theme.accent} shadow-[0_0_10px_rgba(0,0,0,0.5)]`} aria-hidden="true" />
-                </div>
-                <span className={`text-sm font-mono font-black text-${theme.accent}`} aria-hidden="true">{slangLevel}%</span>
+              <div className="flex items-center gap-2 mb-4 px-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                  Select Your Vibe
+                </span>
+                <div className={`w-1.5 h-1.5 rounded-full bg-${theme.accent} shadow-[0_0_10px_rgba(0,0,0,0.5)]`} aria-hidden="true" />
               </div>
-              <div className="relative group/slider h-6 flex items-center">
-                <input 
-                  id={sliderId}
-                  type="range" 
-                  min="0" 
-                  max="100" 
-                  value={slangLevel} 
-                  onChange={(e) => setSlangLevel(parseInt(e.target.value))}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={slangLevel}
-                  className={`w-full h-1 bg-slate-800 rounded-full appearance-none cursor-pointer focus:outline-none text-${theme.primary} transition-all`}
-                  style={{ color: `var(--tw-text-opacity, 1) ${theme.id === 'indigo' ? '#6366f1' : theme.id === 'rose' ? '#f43f5e' : theme.id === 'emerald' ? '#10b981' : '#f59e0b'}` } as any}
-                />
-              </div>
-              <div className="flex justify-between text-[9px] text-slate-500 mt-2 font-bold uppercase tracking-widest opacity-60 px-1" aria-hidden="true">
-                <span>Classic / Formal</span>
-                <span>Pure Street / Slang</span>
+              <div className="grid grid-cols-3 gap-3">
+                {vibeOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => { setVibeMode(opt.id); setErrorKey(null); }}
+                    aria-pressed={vibeMode === opt.id}
+                    className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all relative overflow-hidden ${
+                      vibeMode === opt.id
+                        ? `bg-${theme.id}-500/20 border-${theme.id}-500/50 text-white shadow-lg shadow-${theme.id}-500/10`
+                        : 'bg-slate-800/40 border-white/5 text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-xs font-black uppercase tracking-widest mb-1">{opt.label}</span>
+                    <span className="text-[9px] font-medium opacity-60 text-center leading-none">{opt.desc}</span>
+                    {vibeMode === opt.id && (
+                      <div className={`absolute bottom-0 left-0 right-0 h-1 bg-${theme.accent} animate-in slide-in-from-bottom-1 duration-300`} />
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="relative">
-              <label htmlFor={inputAreaId} className="sr-only">Formal text to translate</label>
+              <label htmlFor={inputAreaId} className="sr-only">Text to translate</label>
               <textarea
                 id={inputAreaId}
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder="Paste formal text here..."
+                onChange={(e) => { setInputText(e.target.value); setErrorKey(null); }}
+                onKeyDown={handleKeyDown}
+                placeholder="What's on your mind?..."
                 className={`w-full bg-slate-950/40 border border-slate-800/50 text-slate-100 rounded-[2rem] p-8 h-48 focus:outline-none focus:ring-2 focus:ring-${theme.id}-500/20 transition-all resize-none text-xl leading-relaxed placeholder:text-slate-700 placeholder:italic`}
               />
+              <div className="absolute bottom-6 left-8">
+                 <p className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.2em] opacity-40">
+                   Press Enter to Translate / Shift+Enter for New Line
+                 </p>
+              </div>
               <button
                 onClick={handleTranslate}
-                disabled={isLoading || !inputText.trim() || !isOnline}
+                disabled={isLoading || !inputText.trim() || (!isOnline && vibeMode !== 'formal')}
                 aria-busy={isLoading}
-                title={!isOnline ? "Translation requires internet connection" : ""}
                 className={`absolute bottom-6 right-6 px-10 py-4 rounded-2xl font-black transition-all shadow-2xl flex items-center gap-3 overflow-hidden group/btn focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-slate-900 ${
-                  isLoading || !inputText.trim() || !isOnline
+                  isLoading || !inputText.trim() 
                     ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-transparent' 
                     : `bg-${theme.primary} hover:bg-${theme.secondary} text-white hover:scale-105 active:scale-95 border-b-4 border-${theme.id}-700`
                 }`}
@@ -338,7 +387,7 @@ const App: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <span className="uppercase tracking-[0.2em] text-xs">{!isOnline ? "Connect to Vibe" : "Vibe Check"}</span>
+                    <span className="uppercase tracking-[0.2em] text-xs">{!isOnline ? "Vibe Local" : "Vibe Check"}</span>
                     <svg className="w-5 h-5 transition-transform group-hover/btn:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
@@ -348,11 +397,9 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Error Message Display */}
-          {error && <ErrorState message={error} onRetry={handleTranslate} theme={theme} />}
+          {errorKey && <ErrorState errorKey={errorKey} onRetry={handleTranslate} theme={theme} />}
 
-          {/* Result Section */}
-          {result && !error && (
+          {result && !errorKey && (
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-1000" aria-live="polite">
               <div className={`glass border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl`}>
                 <div className="p-8 lg:p-12">
@@ -410,7 +457,7 @@ const App: React.FC = () => {
                         <svg className={`w-4 h-4 text-${theme.accent}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Linguistic Nuance
+                        Native Flow Nuance
                       </h4>
                       <div className="glass rounded-2xl p-6 border border-white/5">
                         <p className="text-sm text-slate-300 leading-relaxed font-medium">
@@ -423,7 +470,7 @@ const App: React.FC = () => {
                         <svg className={`w-4 h-4 text-${theme.accent}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                         </svg>
-                        Vibe Glossary
+                        Native Shortcuts
                       </h4>
                       <div className="flex flex-wrap gap-3">
                         {result.slangUsed.map((detail, idx) => (
@@ -437,7 +484,6 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* History Section */}
           {history.length > 0 && (
             <div className="mt-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
               <div className="flex justify-between items-center mb-6 px-4">
@@ -461,7 +507,9 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-bold text-slate-500 uppercase">
                           {LANGUAGES.find(l => l.code === item.sourceLang)?.flag} → {LANGUAGES.find(l => l.code === item.targetLang)?.flag}
                         </span>
-                        <span className={`text-[10px] font-mono font-bold text-${theme.accent} opacity-40`}>{item.slangLevel}%</span>
+                        <span className={`text-[10px] font-black uppercase tracking-tighter text-${theme.accent} opacity-60`}>
+                          {item.vibeMode}
+                        </span>
                       </div>
                       <p className="text-sm text-slate-100 font-bold truncate mb-0.5 group-hover:text-white transition-colors">
                         {item.result.translatedText}
@@ -490,7 +538,7 @@ const App: React.FC = () => {
              <span className="text-xs font-black uppercase tracking-[0.5em] text-slate-400">Gemini Flash AI</span>
           </div>
           <p className="text-slate-600 text-xs font-medium max-w-xs mx-auto">
-            Dynamic slang engine optimized for local colloquialisms and street-level cultural context. Accessible offline via local cache.
+            Dynamic vibe engine for Proper, Real Talk, and Urban Mix. Turning textbooks into real life.
           </p>
         </div>
       </footer>

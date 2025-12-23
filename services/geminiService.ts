@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { TranslationResult } from "../types";
+import { TranslationResult, VibeMode } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
@@ -8,70 +8,96 @@ export const translateWithSlang = async (
   text: string,
   sourceLang: string,
   targetLang: string,
-  slangLevel: number // 0 to 100
+  vibeMode: VibeMode
 ): Promise<TranslationResult> => {
   const model = "gemini-3-flash-preview";
   
+  let stylisticContext = "";
+  if (vibeMode === 'formal') {
+    stylisticContext = `Translate using formal, grammatically perfect, and standard "textbook" ${targetLang}. Use full words, no contractions, and proper sentence structure. Avoid code-switching.`;
+  } else if (vibeMode === 'casual') {
+    stylisticContext = `Translate using "Real Talk" ${targetLang}. 
+    - PRIORITY: Brevity and natural flow. 
+    - STRUCTURE: Use Predicate-First structure (e.g., "Kamukha..." instead of "Ang... ay kamukha"). 
+    - CONTRACTIONS: Use native shortcuts like "'yung" (not "ang iyong"), "'to" (not "ito"), "dun" (not "doon"), "n'yo" (not "ninyo"). 
+    - VIBE: Sound like a native speaker talking to a close friend. Drop redundant pronouns.`;
+  } else if (vibeMode === 'taglish') {
+    stylisticContext = `Translate into modern "Urban Taglish" (Manila style). 
+    - MIXING: Seamlessly blend English and Tagalog as urban Filipinos do. 
+    - STYLE: Use "Conyo" or "Street" inflections where appropriate. 
+    - SLANG: Include current social media terms (e.g., "vibes", "shookt", "char", "mars"). 
+    - FLOW: It should sound like a casual chat message or a quick conversation.`;
+  }
+
   const prompt = `
     Translate the following text from ${sourceLang} to ${targetLang}.
     
-    CRITICAL INSTRUCTION: 
-    The translation MUST be in a "relaxed", "local", or "slang" variation. 
-    It should sound like a native speaker talking to a friend. 
-    Avoid formal, textbook, or archaic language. 
+    STYLE REQUIREMENT: 
+    ${stylisticContext}
     
-    If the target is Tagalog/Filipino, use "Taglish" (mixing Tagalog and English) where natural, and use current Manila street slang or "kanto" speak.
-    
-    Slang Intensity Level: ${slangLevel}/100 (where 0 is natural casual and 100 is very deep street slang).
+    CRITICAL FOR TAGALOG: 
+    If mode is NOT formal, NEVER use "ay" as a linker if it can be avoided by flipping the sentence. 
+    Avoid archaic words like "binibini", "sapagkat", or "nagnanais". 
+    Use "parang" instead of "tila".
     
     Text to translate: "${text}"
   `;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          translatedText: {
-            type: Type.STRING,
-            description: "The casual/slang translation of the text.",
-          },
-          explanation: {
-            type: Type.STRING,
-            description: "A brief overall explanation of why this phrasing was chosen.",
-          },
-          slangUsed: {
-            type: Type.ARRAY,
-            items: { 
-              type: Type.OBJECT,
-              properties: {
-                term: { type: Type.STRING },
-                meaning: { type: Type.STRING, description: "Deep definition of the slang term." },
-                context: { type: Type.STRING, description: "Cultural context or origin of the term." }
-              },
-              required: ["term", "meaning", "context"]
-            },
-            description: "List of specific slang terms or idioms used with details.",
-          },
-          vibe: {
-            type: Type.STRING,
-            description: "One or two words describing the overall vibe (e.g., 'Chill', 'Hype', 'Street').",
-          },
-        },
-        required: ["translatedText", "explanation", "slangUsed", "vibe"],
-      },
-    },
-  });
-
   try {
-    const data = JSON.parse(response.text || "{}");
-    return data as TranslationResult;
-  } catch (error) {
-    console.error("Failed to parse Gemini response:", error);
-    throw new Error("Failed to generate translation.");
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            translatedText: {
+              type: Type.STRING,
+              description: "The punchy, natural translation.",
+            },
+            explanation: {
+              type: Type.STRING,
+              description: "Why this version sounds more native/natural.",
+            },
+            slangUsed: {
+              type: Type.ARRAY,
+              items: { 
+                type: Type.OBJECT,
+                properties: {
+                  term: { type: Type.STRING },
+                  meaning: { type: Type.STRING },
+                  context: { type: Type.STRING }
+                },
+                required: ["term", "meaning", "context"]
+              },
+              description: "Shortcuts or slang used.",
+            },
+            vibe: {
+              type: Type.STRING,
+              description: "The specific sub-vibe (e.g., 'Street', 'Hataw', 'Tito-style').",
+            },
+          },
+          required: ["translatedText", "explanation", "slangUsed", "vibe"],
+        },
+      },
+    });
+
+    const textResponse = response.text;
+    if (!textResponse) {
+      throw new Error("EMPTY_RESPONSE");
+    }
+
+    return JSON.parse(textResponse) as TranslationResult;
+  } catch (error: any) {
+    console.error("Gemini API Error:", error);
+    const errorMessage = error.message || "";
+    if (errorMessage.includes("429")) throw new Error("QUOTA_EXCEEDED");
+    if (errorMessage.includes("403") || errorMessage.includes("API_KEY_INVALID")) throw new Error("CONFIG_ERROR");
+    if (errorMessage.includes("SAFETY") || errorMessage.includes("blocked")) throw new Error("SAFETY_BLOCK");
+    if (error instanceof SyntaxError) throw new Error("PARSE_ERROR");
+    if (!navigator.onLine) throw new Error("OFFLINE");
+    throw new Error("UNKNOWN_ERROR");
   }
 };
 

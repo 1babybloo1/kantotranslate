@@ -12,13 +12,15 @@ export interface TranslationResult {
   vibe: string;
 }
 
+export type VibeMode = 'formal' | 'casual' | 'taglish';
+
 export interface HistoryItem {
   id: string;
   timestamp: number;
   inputText: string;
   sourceLang: string;
   targetLang: string;
-  slangLevel: number;
+  vibeMode: VibeMode;
   result: TranslationResult;
 }
 
