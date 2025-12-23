@@ -167,7 +167,6 @@ const App: React.FC = () => {
   };
 
   const handleClearHistory = () => {
-    // Robust clear action
     setHistory([]);
     localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
     lastTranslatedState.current = null;
@@ -207,7 +206,7 @@ const App: React.FC = () => {
         vibeMode,
         (chunk) => {
           setStreamingText(chunk);
-          setIsLoading(false); // Stop pulse as soon as first bit of text appears
+          setIsLoading(false);
         }
       );
 
@@ -304,10 +303,10 @@ const App: React.FC = () => {
   }, [inputText, history, sourceLang, targetLang, vibeMode, result]);
 
   return (
-    <div className={`min-h-screen bg-slate-950 text-slate-200 selection:bg-${theme.id}-500/30 transition-colors duration-700`}>
+    <div className={`min-h-screen bg-slate-950 text-slate-200 selection:bg-${theme.id}-500/30 transition-colors duration-700 ${lowPerf ? 'low-perf-mode' : ''}`}>
       <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        <div className={`absolute -top-24 -left-24 w-[40rem] h-[40rem] ${theme.glow} ${lowPerf ? 'blur-[80px] opacity-40' : 'blur-[140px] opacity-60 animate-pulse'} rounded-full transition-all duration-1000`} />
-        <div className={`absolute bottom-[-10rem] right-[-10rem] w-[35rem] h-[35rem] ${theme.glow} ${lowPerf ? 'blur-[60px] opacity-20' : 'blur-[120px] opacity-30'} rounded-full transition-all duration-1000`} />
+        <div className={`absolute -top-24 -left-24 w-[40rem] h-[40rem] ${theme.glow} ${lowPerf ? 'blur-[40px] opacity-20' : 'blur-[140px] opacity-60 animate-pulse'} rounded-full transition-all duration-1000`} />
+        <div className={`absolute bottom-[-10rem] right-[-10rem] w-[35rem] h-[35rem] ${theme.glow} ${lowPerf ? 'hidden' : 'blur-[120px] opacity-30'} rounded-full transition-all duration-1000`} />
       </div>
 
       <main className="relative z-10 max-w-4xl mx-auto px-6 py-12 lg:py-16">
@@ -315,7 +314,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-${theme.id}-500/10 border border-${theme.id}-500/20 glass`} aria-label="App version and status">
               {!lowPerf && <span className={`w-2 h-2 rounded-full bg-${theme.accent} animate-pulse`} aria-hidden="true" />}
-              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.0 / SecureFlow</span>
+              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.1 / Performance+</span>
             </div>
             
             {!isOnline && (
@@ -366,7 +365,7 @@ const App: React.FC = () => {
             Kanto
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            The world's first <span className={`text-${theme.accent} font-semibold transition-colors duration-500`}>Real-Time</span> vibe translator. Zero reasoning lag.
+            The world's first <span className={`text-${theme.accent} font-semibold transition-colors duration-500`}>Real-Time</span> vibe translator.
           </p>
         </header>
 
@@ -458,7 +457,7 @@ const App: React.FC = () => {
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-700" aria-live="polite">
               <div className={`glass border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl relative`}>
                 <div className="absolute top-4 right-8">
-                  <span className={`text-[8px] font-black uppercase tracking-[0.3em] ${isStreaming ? `text-${theme.accent} animate-pulse` : 'text-slate-600'} bg-slate-800/40 px-3 py-1 rounded-full border border-white/5`}>
+                  <span className={`text-[8px] font-black uppercase tracking-[0.3em] ${isStreaming && !lowPerf ? `text-${theme.accent} animate-pulse` : 'text-slate-600'} bg-slate-800/40 px-3 py-1 rounded-full border border-white/5`}>
                     {isStreaming ? "Streaming Live" : "Smart Output Ready"}
                   </span>
                 </div>
@@ -492,11 +491,11 @@ const App: React.FC = () => {
 
                   <p className={`text-3xl lg:text-5xl font-jakarta font-bold text-white leading-[1.2] mb-12 tracking-tight transition-opacity duration-300 ${isStreaming ? 'opacity-90' : 'opacity-100'}`}>
                     {isStreaming ? streamingText : result?.translatedText}
-                    {isStreaming && <span className={`inline-block w-1.5 h-8 ml-1 bg-${theme.accent} animate-pulse rounded-full`} />}
+                    {isStreaming && <span className={`inline-block w-1.5 h-8 ml-1 bg-${theme.accent} ${!lowPerf ? 'animate-pulse' : ''} rounded-full`} />}
                   </p>
 
                   {result && (
-                    <div className="animate-in fade-in slide-in-from-top-4 duration-700">
+                    <div className={`${!lowPerf ? 'animate-in fade-in slide-in-from-top-4 duration-700' : ''}`}>
                       <div className="grid md:grid-cols-2 gap-10 pt-10 border-t border-white/5">
                         <section>
                           <h4 className={`text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-4 flex items-center gap-2`}>
@@ -541,12 +540,12 @@ const App: React.FC = () => {
           )}
 
           {history.length > 0 && (
-            <div className="mt-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <div className={`mt-12 ${!lowPerf ? 'animate-in fade-in slide-in-from-bottom-8 duration-700' : ''}`}>
               <div className="flex justify-between items-center mb-6 px-4">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Recently Translated</h3>
                 <div className="flex items-center gap-4">
                   {isConfirmingClear ? (
-                    <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
+                    <div className={`flex items-center gap-2 ${!lowPerf ? 'animate-in slide-in-from-right-2 duration-300' : ''}`}>
                       <span className="text-[9px] font-bold uppercase text-red-400 tracking-tighter">Are you sure?</span>
                       <button 
                         onClick={handleClearHistory}
