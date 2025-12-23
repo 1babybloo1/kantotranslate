@@ -126,6 +126,7 @@ const App: React.FC = () => {
   const [lowPerf, setLowPerf] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
 
   const lastTranslatedState = useRef<{
     text: string;
@@ -166,11 +167,11 @@ const App: React.FC = () => {
   };
 
   const handleClearHistory = () => {
-    if (confirm("Delete all translation history?")) {
-      setHistory([]);
-      localStorage.removeItem(STORAGE_KEY);
-      lastTranslatedState.current = null;
-    }
+    // Robust clear action
+    setHistory([]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+    lastTranslatedState.current = null;
+    setIsConfirmingClear(false);
   };
 
   const handleTranslate = async () => {
@@ -314,7 +315,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-${theme.id}-500/10 border border-${theme.id}-500/20 glass`} aria-label="App version and status">
               {!lowPerf && <span className={`w-2 h-2 rounded-full bg-${theme.accent} animate-pulse`} aria-hidden="true" />}
-              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v2.9 / Turbo Stream</span>
+              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.0 / SecureFlow</span>
             </div>
             
             {!isOnline && (
@@ -543,7 +544,32 @@ const App: React.FC = () => {
             <div className="mt-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
               <div className="flex justify-between items-center mb-6 px-4">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Recently Translated</h3>
-                <button onClick={handleClearHistory} className="text-[10px] font-bold uppercase text-slate-600 hover:text-red-400 transition-colors tracking-widest">Clear history</button>
+                <div className="flex items-center gap-4">
+                  {isConfirmingClear ? (
+                    <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
+                      <span className="text-[9px] font-bold uppercase text-red-400 tracking-tighter">Are you sure?</span>
+                      <button 
+                        onClick={handleClearHistory}
+                        className="text-[10px] font-black uppercase text-red-500 hover:bg-red-500/10 px-2 py-1 rounded-lg transition-colors border border-red-500/20"
+                      >
+                        Yes, Delete
+                      </button>
+                      <button 
+                        onClick={() => setIsConfirmingClear(false)}
+                        className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-200 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setIsConfirmingClear(true)} 
+                      className="text-[10px] font-bold uppercase text-slate-600 hover:text-red-400 transition-colors tracking-widest"
+                    >
+                      Clear history
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="grid gap-3">
                 {history.map((item) => {
