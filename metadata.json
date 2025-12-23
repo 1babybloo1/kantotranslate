@@ -1,0 +1,7 @@
+{
+  "name": "Kanto Translator",
+  "description": "An aesthetic, dynamic translator that turns formal text into natural, relaxed local slang, specializing in Tagalog/Filipino (Taglish) and other world languages.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
