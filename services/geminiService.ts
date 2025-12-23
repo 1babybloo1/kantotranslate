@@ -1,14 +1,15 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { TranslationResult, VibeMode } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
-export const translateWithSlang = async (
+export const translateWithSlangStream = async (
   text: string,
   sourceLang: string,
   targetLang: string,
-  vibeMode: VibeMode
+  vibeMode: VibeMode,
+  onChunk: (textSoFar: string) => void
 ): Promise<TranslationResult> => {
   const model = "gemini-3-flash-preview";
   
@@ -35,30 +36,34 @@ export const translateWithSlang = async (
     STYLE REQUIREMENT: 
     ${stylisticContext}
     
+    SMART CORRECTION & CONTEXT PREDICTION:
+    - The source text may contain spelling errors. Predict the intended word.
+    - Finalize the translation based on the intended meaning.
+
     CRITICAL FOR TAGALOG: 
-    If mode is NOT formal, NEVER use "ay" as a linker if it can be avoided by flipping the sentence. 
-    Avoid archaic words like "binibini", "sapagkat", or "nagnanais". 
-    Use "parang" instead of "tila".
+    - If mode is NOT formal, NEVER use "ay" as a linker if it can be avoided. 
+    - Use "parang" instead of "tila".
     
     Text to translate: "${text}"
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const responseStream = await ai.models.generateContentStream({
       model,
       contents: prompt,
       config: {
+        thinkingConfig: { thinkingBudget: 0 }, // MAX SPEED: Disable thinking
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             translatedText: {
               type: Type.STRING,
-              description: "The punchy, natural translation.",
+              description: "The punchy, natural translation corrected for typos.",
             },
             explanation: {
               type: Type.STRING,
-              description: "Why this version sounds more native/natural.",
+              description: "Brief note on corrections or nuance.",
             },
             slangUsed: {
               type: Type.ARRAY,
@@ -75,7 +80,7 @@ export const translateWithSlang = async (
             },
             vibe: {
               type: Type.STRING,
-              description: "The specific sub-vibe (e.g., 'Street', 'Hataw', 'Tito-style').",
+              description: "The specific sub-vibe.",
             },
           },
           required: ["translatedText", "explanation", "slangUsed", "vibe"],
@@ -83,22 +88,38 @@ export const translateWithSlang = async (
       },
     });
 
-    const textResponse = response.text;
-    if (!textResponse) {
-      throw new Error("EMPTY_RESPONSE");
+    let fullText = "";
+    for await (const chunk of responseStream) {
+      const c = chunk as GenerateContentResponse;
+      const part = c.text;
+      if (part) {
+        fullText += part;
+        // Try to extract translatedText from the partial JSON for real-time UI updates
+        const match = fullText.match(/"translatedText":\s*"((?:[^"\\]|\\.)*)"/);
+        if (match && match[1]) {
+          onChunk(match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'));
+        }
+      }
     }
 
-    return JSON.parse(textResponse) as TranslationResult;
+    return JSON.parse(fullText) as TranslationResult;
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     const errorMessage = error.message || "";
     if (errorMessage.includes("429")) throw new Error("QUOTA_EXCEEDED");
-    if (errorMessage.includes("403") || errorMessage.includes("API_KEY_INVALID")) throw new Error("CONFIG_ERROR");
-    if (errorMessage.includes("SAFETY") || errorMessage.includes("blocked")) throw new Error("SAFETY_BLOCK");
-    if (error instanceof SyntaxError) throw new Error("PARSE_ERROR");
     if (!navigator.onLine) throw new Error("OFFLINE");
     throw new Error("UNKNOWN_ERROR");
   }
+};
+
+// Keep original for backward compatibility if needed, but updated to use stream internally for speed
+export const translateWithSlang = async (
+  text: string,
+  sourceLang: string,
+  targetLang: string,
+  vibeMode: VibeMode
+): Promise<TranslationResult> => {
+  return translateWithSlangStream(text, sourceLang, targetLang, vibeMode, () => {});
 };
 
 export const speakText = async (text: string, voiceName: string = 'Kore') => {
