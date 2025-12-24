@@ -19,15 +19,15 @@ export const translateWithSlangStream = async (
   } else if (vibeMode === 'casual') {
     stylisticContext = `Translate using "Real Talk" ${targetLang}. 
     - PRIORITY: Brevity and natural flow. 
-    - STRUCTURE: Use Predicate-First structure (e.g., "Kamukha..." instead of "Ang... ay kamukha"). 
-    - CONTRACTIONS: Use native shortcuts like "'yung" (not "ang iyong"), "'to" (not "ito"), "dun" (not "doon"), "n'yo" (not "ninyo"). 
-    - VIBE: Sound like a native speaker talking to a close friend. Drop redundant pronouns.`;
+    - STRUCTURE: Use Predicate-First structure. 
+    - CONTRACTIONS: Use native shortcuts like "'yung", "'to", "dun", "n'yo". 
+    - VIBE: Sound like a native speaker. Drop redundant pronouns.`;
   } else if (vibeMode === 'taglish') {
     stylisticContext = `Translate into modern "Urban Taglish" (Manila style). 
     - MIXING: Seamlessly blend English and Tagalog as urban Filipinos do. 
-    - STYLE: Use "Conyo" or "Street" inflections where appropriate. 
-    - SLANG: Include current social media terms (e.g., "vibes", "shookt", "char", "mars"). 
-    - FLOW: It should sound like a casual chat message or a quick conversation.`;
+    - STYLE: Use modern inflections. 
+    - SLANG: Include current social media terms. 
+    - FLOW: It should sound like a casual chat message.`;
   }
 
   const prompt = `
@@ -36,9 +36,15 @@ export const translateWithSlangStream = async (
     STYLE REQUIREMENT: 
     ${stylisticContext}
     
-    SMART CORRECTION & CONTEXT PREDICTION:
+    SMART CORRECTION & SANITY GUARD:
     - The source text may contain spelling errors. Predict the intended word.
-    - Finalize the translation based on the intended meaning.
+    - CRITICAL: DO NOT sexualize the translation unless the source text is explicitly and unmistakably sexual. 
+    - If the user uses "shit" or other common expletives as intensifiers (e.g., "intense shit"), treat them as exclamations of intensity or the literal act. 
+    - NEVER map "shit" to anatomical references unless specified.
+    
+    TRANSLITERATION REQUIREMENT:
+    - If ${targetLang} uses non-Latin characters (like Chinese Hanzi, Japanese Kanji/Kana, or Korean Hangul), you MUST provide a phonetic pronunciation in the 'transliteration' field (e.g., Pinyin for Chinese, Romaji for Japanese). 
+    - If the target language uses Latin script, leave 'transliteration' empty or null.
 
     CRITICAL FOR TAGALOG: 
     - If mode is NOT formal, NEVER use "ay" as a linker if it can be avoided. 
@@ -52,14 +58,18 @@ export const translateWithSlangStream = async (
       model,
       contents: prompt,
       config: {
-        thinkingConfig: { thinkingBudget: 0 }, // MAX SPEED: Disable thinking
+        thinkingConfig: { thinkingBudget: 0 },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             translatedText: {
               type: Type.STRING,
-              description: "The punchy, natural translation corrected for typos.",
+              description: "The main script translation.",
+            },
+            transliteration: {
+              type: Type.STRING,
+              description: "Phonetic guide (e.g., Pinyin, Romaji) if symbols are used.",
             },
             explanation: {
               type: Type.STRING,
@@ -94,7 +104,6 @@ export const translateWithSlangStream = async (
       const part = c.text;
       if (part) {
         fullText += part;
-        // Try to extract translatedText from the partial JSON for real-time UI updates
         const match = fullText.match(/"translatedText":\s*"((?:[^"\\]|\\.)*)"/);
         if (match && match[1]) {
           onChunk(match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'));
@@ -112,7 +121,6 @@ export const translateWithSlangStream = async (
   }
 };
 
-// Keep original for backward compatibility if needed, but updated to use stream internally for speed
 export const translateWithSlang = async (
   text: string,
   sourceLang: string,

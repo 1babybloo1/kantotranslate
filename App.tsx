@@ -127,6 +127,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
+  const [showPhonetic, setShowPhonetic] = useState(true);
 
   const lastTranslatedState = useRef<{
     text: string;
@@ -137,6 +138,10 @@ const App: React.FC = () => {
 
   const theme = useMemo(() => THEMES.find(t => t.id === activeThemeId) || THEMES[0], [activeThemeId]);
   const inputAreaId = useId();
+
+  const isTargetSymbolBased = useMemo(() => {
+    return LANGUAGES.find(l => l.code === targetLang)?.isSymbolBased;
+  }, [targetLang]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -265,7 +270,10 @@ const App: React.FC = () => {
 
   const copyToClipboard = () => {
     if (result) {
-      navigator.clipboard.writeText(result.translatedText);
+      const textToCopy = showPhonetic && result.transliteration 
+        ? `${result.translatedText} (${result.transliteration})`
+        : result.translatedText;
+      navigator.clipboard.writeText(textToCopy);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     }
@@ -314,7 +322,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-${theme.id}-500/10 border border-${theme.id}-500/20 glass`} aria-label="App version and status">
               {!lowPerf && <span className={`w-2 h-2 rounded-full bg-${theme.accent} animate-pulse`} aria-hidden="true" />}
-              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.1 / Performance+</span>
+              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.2 / Phonetic+</span>
             </div>
             
             {!isOnline && (
@@ -365,7 +373,7 @@ const App: React.FC = () => {
             Kanto
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            The world's first <span className={`text-${theme.accent} font-semibold transition-colors duration-500`}>Real-Time</span> vibe translator.
+            The world's first <span className={`text-${theme.accent} font-semibold transition-colors duration-500`}>Real-Time</span> vibe translator. Zero reasoning lag.
           </p>
         </header>
 
@@ -390,9 +398,21 @@ const App: React.FC = () => {
             </div>
 
             <div className="mb-10">
-              <div className="flex items-center gap-2 mb-4 px-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Select Vibe</span>
-                <div className={`w-1.5 h-1.5 rounded-full bg-${theme.accent}`} />
+              <div className="flex items-center justify-between mb-4 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Select Vibe</span>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-${theme.accent}`} />
+                </div>
+                
+                {isTargetSymbolBased && (
+                  <button 
+                    onClick={() => setShowPhonetic(!showPhonetic)}
+                    className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${showPhonetic ? `bg-${theme.id}-500/10 border-${theme.id}-500/30 text-${theme.accent}` : 'bg-slate-800/40 border-white/5 text-slate-500'}`}
+                  >
+                    <span className="text-[9px] font-black uppercase tracking-widest">{showPhonetic ? 'Symbols + Phonetic' : 'Symbols Only'}</span>
+                    <div className={`w-2 h-2 rounded-full ${showPhonetic ? `bg-${theme.accent}` : 'bg-slate-600'}`} />
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {vibeOptions.map((opt) => (
@@ -489,10 +509,17 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className={`text-3xl lg:text-5xl font-jakarta font-bold text-white leading-[1.2] mb-12 tracking-tight transition-opacity duration-300 ${isStreaming ? 'opacity-90' : 'opacity-100'}`}>
-                    {isStreaming ? streamingText : result?.translatedText}
-                    {isStreaming && <span className={`inline-block w-1.5 h-8 ml-1 bg-${theme.accent} ${!lowPerf ? 'animate-pulse' : ''} rounded-full`} />}
-                  </p>
+                  <div className="mb-12">
+                    <p className={`text-3xl lg:text-5xl font-jakarta font-bold text-white leading-[1.2] tracking-tight transition-opacity duration-300 ${isStreaming ? 'opacity-90' : 'opacity-100'}`}>
+                      {isStreaming ? streamingText : result?.translatedText}
+                      {isStreaming && <span className={`inline-block w-1.5 h-8 ml-1 bg-${theme.accent} ${!lowPerf ? 'animate-pulse' : ''} rounded-full`} />}
+                    </p>
+                    {!isStreaming && showPhonetic && result?.transliteration && (
+                      <p className={`mt-4 text-xl lg:text-2xl font-mono font-medium text-slate-500 italic selection:bg-${theme.id}-500/20`}>
+                        {result.transliteration}
+                      </p>
+                    )}
+                  </div>
 
                   {result && (
                     <div className={`${!lowPerf ? 'animate-in fade-in slide-in-from-top-4 duration-700' : ''}`}>
@@ -580,7 +607,7 @@ const App: React.FC = () => {
                           <span className="text-[10px] font-bold text-slate-500 uppercase">{LANGUAGES.find(l => l.code === item.sourceLang)?.flag} → {LANGUAGES.find(l => l.code === item.targetLang)?.flag}</span>
                           <span className={`text-[10px] font-black uppercase tracking-tighter text-${theme.accent} opacity-60`}>{item.vibeMode}</span>
                         </div>
-                        <p className="text-sm text-slate-100 font-bold truncate mb-0.5">{item.result.translatedText}</p>
+                        <p className="text-sm text-slate-100 font-bold truncate mb-0.5">{item.result.translatedText} {showPhonetic && item.result.transliteration ? `(${item.result.transliteration})` : ''}</p>
                         <p className="text-[10px] text-slate-500 truncate italic">"{item.inputText}"</p>
                       </div>
                       <div className="shrink-0 flex items-center gap-3">

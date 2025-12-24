@@ -10,6 +10,7 @@ export interface TranslationResult {
   explanation: string;
   slangUsed: SlangDetail[];
   vibe: string;
+  transliteration?: string; // Phonetic guide for symbol-based languages
 }
 
 export type VibeMode = 'formal' | 'casual' | 'taglish';
@@ -47,14 +48,15 @@ export interface Language {
   code: string;
   name: string;
   flag: string;
+  isSymbolBased?: boolean;
 }
 
 export const LANGUAGES: Language[] = [
   { code: 'tl', name: 'Tagalog/Filipino', flag: '🇵🇭' },
   { code: 'en', name: 'English', flag: '🇺🇸' },
   { code: 'es', name: 'Spanish', flag: '🇪🇸' },
-  { code: 'ja', name: 'Japanese', flag: '🇯🇵' },
-  { code: 'ko', name: 'Korean', flag: '🇰🇷' },
+  { code: 'ja', name: 'Japanese', flag: '🇯🇵', isSymbolBased: true },
+  { code: 'ko', name: 'Korean', flag: '🇰🇷', isSymbolBased: true },
   { code: 'fr', name: 'French', flag: '🇫🇷' },
-  { code: 'zh', name: 'Chinese', flag: '🇨🇳' },
+  { code: 'zh', name: 'Chinese', flag: '🇨🇳', isSymbolBased: true },
 ];
