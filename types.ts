@@ -11,6 +11,7 @@ export interface TranslationResult {
   slangUsed: SlangDetail[];
   vibe: string;
   transliteration?: string; // Phonetic guide for symbol-based languages
+  detectedLanguage?: string; // The language detected if 'auto' was used
 }
 
 export type VibeMode = 'formal' | 'casual' | 'taglish';
@@ -25,7 +26,7 @@ export interface HistoryItem {
   result: TranslationResult;
 }
 
-export type LanguageCode = 'en' | 'tl' | 'es' | 'ja' | 'ko' | 'fr' | 'zh';
+export type LanguageCode = 'auto' | 'en' | 'tl' | 'es' | 'ja' | 'ko' | 'fr' | 'zh';
 
 export type ThemeType = 'indigo' | 'rose' | 'emerald' | 'amber';
 
@@ -52,6 +53,7 @@ export interface Language {
 }
 
 export const LANGUAGES: Language[] = [
+  { code: 'auto', name: 'Auto-detect', flag: '✨' },
   { code: 'tl', name: 'Tagalog/Filipino', flag: '🇵🇭' },
   { code: 'en', name: 'English', flag: '🇺🇸' },
   { code: 'es', name: 'Spanish', flag: '🇪🇸' },

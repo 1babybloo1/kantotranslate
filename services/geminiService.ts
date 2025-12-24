@@ -30,8 +30,12 @@ export const translateWithSlangStream = async (
     - FLOW: It should sound like a casual chat message.`;
   }
 
+  const sourceContext = sourceLang === 'auto' 
+    ? "the source language is unknown, please DETECT IT automatically" 
+    : `the source language is ${sourceLang}`;
+
   const prompt = `
-    Translate the following text from ${sourceLang} to ${targetLang}.
+    Translate the following text from ${sourceContext} to ${targetLang}.
     
     STYLE REQUIREMENT: 
     ${stylisticContext}
@@ -92,6 +96,10 @@ export const translateWithSlangStream = async (
               type: Type.STRING,
               description: "The specific sub-vibe.",
             },
+            detectedLanguage: {
+              type: Type.STRING,
+              description: "The name of the language detected from the input text (e.g., 'English', 'Tagalog'). Only needed if sourceLang was 'auto'.",
+            }
           },
           required: ["translatedText", "explanation", "slangUsed", "vibe"],
         },

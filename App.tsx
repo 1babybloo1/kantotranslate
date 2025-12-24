@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect, useMemo, useId, useRef } from 'react';
 import { translateWithSlangStream, speakText } from './services/geminiService';
-import { TranslationResult, LANGUAGES, SlangDetail, THEMES, ThemeType, ThemeConfig, HistoryItem, VibeMode } from './types';
+import { TranslationResult, LANGUAGES, SlangDetail, THEMES, ThemeType, ThemeConfig, HistoryItem, VibeMode, LanguageCode } from './types';
 import LanguageSelector from './components/LanguageSelector';
 
 const STORAGE_KEY = 'kanto_history';
+const SETTINGS_KEY_SOURCE = 'kanto_setting_source_lang';
+const SETTINGS_KEY_TARGET = 'kanto_setting_target_lang';
+const SETTINGS_KEY_VIBE = 'kanto_setting_vibe_mode';
 
 const SlangChip: React.FC<{ detail: SlangDetail, theme: ThemeConfig, lowPerf?: boolean }> = ({ detail, theme, lowPerf }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -113,9 +116,12 @@ const ErrorState: React.FC<{ errorKey: string; onRetry: () => void; theme: Theme
 
 const App: React.FC = () => {
   const [inputText, setInputText] = useState('');
-  const [sourceLang, setSourceLang] = useState('en');
-  const [targetLang, setTargetLang] = useState('tl');
-  const [vibeMode, setVibeMode] = useState<VibeMode>('casual');
+  
+  // Persistent state initializers
+  const [sourceLang, setSourceLang] = useState<LanguageCode>(() => (localStorage.getItem(SETTINGS_KEY_SOURCE) as LanguageCode) || 'auto');
+  const [targetLang, setTargetLang] = useState<LanguageCode>(() => (localStorage.getItem(SETTINGS_KEY_TARGET) as LanguageCode) || 'tl');
+  const [vibeMode, setVibeMode] = useState<VibeMode>(() => (localStorage.getItem(SETTINGS_KEY_VIBE) as VibeMode) || 'casual');
+  
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -142,6 +148,13 @@ const App: React.FC = () => {
   const isTargetSymbolBased = useMemo(() => {
     return LANGUAGES.find(l => l.code === targetLang)?.isSymbolBased;
   }, [targetLang]);
+
+  // Save settings when changed
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY_SOURCE, sourceLang);
+    localStorage.setItem(SETTINGS_KEY_TARGET, targetLang);
+    localStorage.setItem(SETTINGS_KEY_VIBE, vibeMode);
+  }, [sourceLang, targetLang, vibeMode]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -246,8 +259,8 @@ const App: React.FC = () => {
 
   const restoreFromHistory = (item: HistoryItem) => {
     setInputText(item.inputText);
-    setSourceLang(item.sourceLang);
-    setTargetLang(item.targetLang);
+    setSourceLang(item.sourceLang as LanguageCode);
+    setTargetLang(item.targetLang as LanguageCode);
     setVibeMode(item.vibeMode);
     setResult(item.result);
     setStreamingText('');
@@ -264,8 +277,10 @@ const App: React.FC = () => {
   };
 
   const swapLanguages = () => {
+    if (sourceLang === 'auto') return;
+    const oldSource = sourceLang;
     setSourceLang(targetLang);
-    setTargetLang(sourceLang);
+    setTargetLang(oldSource);
   };
 
   const copyToClipboard = () => {
@@ -322,7 +337,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-${theme.id}-500/10 border border-${theme.id}-500/20 glass`} aria-label="App version and status">
               {!lowPerf && <span className={`w-2 h-2 rounded-full bg-${theme.accent} animate-pulse`} aria-hidden="true" />}
-              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.2 / Phonetic+</span>
+              <span className={`text-[10px] font-black text-${theme.accent} uppercase tracking-[0.2em]`}>v3.3 / Prefs Active</span>
             </div>
             
             {!isOnline && (
@@ -384,17 +399,18 @@ const App: React.FC = () => {
             )}
             
             <div className="flex flex-col md:flex-row items-center gap-4 mb-10">
-              <LanguageSelector label="Translate from" value={sourceLang} onChange={(v) => { setSourceLang(v); setErrorKey(null); }} />
+              <LanguageSelector label="Translate from" value={sourceLang} onChange={(v) => { setSourceLang(v as LanguageCode); setErrorKey(null); }} />
               <button 
                 onClick={swapLanguages}
+                disabled={sourceLang === 'auto'}
                 aria-label="Swap languages"
-                className={`mt-6 md:mt-4 p-4 rounded-2xl bg-slate-800/40 hover:bg-slate-700/60 border border-white/5 transition-all group/swap hover:scale-110 active:scale-90 focus:outline-none focus:ring-2 focus:ring-${theme.primary} focus:ring-offset-2 focus:ring-offset-slate-950`}
+                className={`mt-6 md:mt-4 p-4 rounded-2xl bg-slate-800/40 border border-white/5 transition-all group/swap hover:scale-110 active:scale-90 focus:outline-none focus:ring-2 focus:ring-${theme.primary} focus:ring-offset-2 focus:ring-offset-slate-950 ${sourceLang === 'auto' ? 'opacity-20 cursor-not-allowed' : 'hover:bg-slate-700/60'}`}
               >
                 <svg className={`w-6 h-6 text-slate-400 group-hover/swap:text-${theme.accent} group-hover/swap:rotate-180 transition-all duration-700`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
               </button>
-              <LanguageSelector label="Translate to" value={targetLang} onChange={(v) => { setTargetLang(v); setErrorKey(null); }} />
+              <LanguageSelector label="Translate to" value={targetLang} onChange={(v) => { setTargetLang(v as LanguageCode); setErrorKey(null); }} />
             </div>
 
             <div className="mb-10">
@@ -486,9 +502,16 @@ const App: React.FC = () => {
                   <div className="flex justify-between items-start mb-10">
                     <div className="flex flex-col gap-2">
                       <span className={`text-[10px] font-black uppercase tracking-[0.3em] text-${theme.accent} opacity-80`}>Translated Output</span>
-                      <div className={`inline-flex items-center gap-2 px-4 py-1.5 bg-${theme.id}-500/10 text-${theme.accent} rounded-full border border-${theme.id}-500/20 text-xs font-bold`}>
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
-                        Vibe: {result?.vibe || vibeMode}
+                      <div className="flex gap-2 items-center">
+                        <div className={`inline-flex items-center gap-2 px-4 py-1.5 bg-${theme.id}-500/10 text-${theme.accent} rounded-full border border-${theme.id}-500/20 text-xs font-bold`}>
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
+                          Vibe: {result?.vibe || vibeMode}
+                        </div>
+                        {result?.detectedLanguage && sourceLang === 'auto' && (
+                          <div className={`inline-flex items-center gap-2 px-4 py-1.5 bg-slate-800/60 text-slate-400 rounded-full border border-white/5 text-[10px] font-black uppercase tracking-widest`}>
+                            Detected: {result.detectedLanguage}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-3">
@@ -604,8 +627,13 @@ const App: React.FC = () => {
                     <button key={item.id} onClick={() => restoreFromHistory(item)} className={`group w-full text-left glass border rounded-2xl p-4 flex items-center justify-between hover:bg-white/5 transition-all focus:outline-none focus:ring-2 focus:ring-slate-800 ${isMatch && item.result.translatedText === result?.translatedText ? `border-${theme.accent}/40 bg-${theme.id}-500/5` : 'border-white/5'}`}>
                       <div className="flex-1 min-w-0 pr-4">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase">{LANGUAGES.find(l => l.code === item.sourceLang)?.flag} → {LANGUAGES.find(l => l.code === item.targetLang)?.flag}</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">
+                            {LANGUAGES.find(l => l.code === item.sourceLang)?.flag} → {LANGUAGES.find(l => l.code === item.targetLang)?.flag}
+                          </span>
                           <span className={`text-[10px] font-black uppercase tracking-tighter text-${theme.accent} opacity-60`}>{item.vibeMode}</span>
+                          {item.result.detectedLanguage && item.sourceLang === 'auto' && (
+                            <span className="text-[9px] font-black uppercase text-slate-600 tracking-tighter">({item.result.detectedLanguage})</span>
+                          )}
                         </div>
                         <p className="text-sm text-slate-100 font-bold truncate mb-0.5">{item.result.translatedText} {showPhonetic && item.result.transliteration ? `(${item.result.transliteration})` : ''}</p>
                         <p className="text-[10px] text-slate-500 truncate italic">"{item.inputText}"</p>
