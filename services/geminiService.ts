@@ -2,8 +2,6 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { TranslationResult, VibeMode } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
 export const translateWithSlangStream = async (
   text: string,
   sourceLang: string,
@@ -11,57 +9,37 @@ export const translateWithSlangStream = async (
   vibeMode: VibeMode,
   onChunk: (textSoFar: string) => void
 ): Promise<TranslationResult> => {
-  const model = "gemini-3-flash-preview";
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  const modelName = "gemini-3-flash-preview";
   
   let stylisticContext = "";
   if (vibeMode === 'formal') {
-    stylisticContext = `Translate using formal, grammatically perfect, and standard "textbook" ${targetLang}. Use full words, no contractions, and proper sentence structure. Avoid code-switching.`;
+    stylisticContext = `Formal, standard "textbook" style. Proper grammar, no contractions, no code-switching.`;
   } else if (vibeMode === 'casual') {
-    stylisticContext = `Translate using "Real Talk" ${targetLang}. 
-    - PRIORITY: Brevity and natural flow. 
-    - STRUCTURE: Use Predicate-First structure. 
-    - CONTRACTIONS: Use native shortcuts like "'yung", "'to", "dun", "n'yo". 
-    - VIBE: Sound like a native speaker. Drop redundant pronouns.`;
+    stylisticContext = `Casual "Real Talk" style. Natural flow, brevity, predicate-first structure. Use native shortcuts (e.g., 'yung, 'to, dun). Drop redundant pronouns.`;
   } else if (vibeMode === 'taglish') {
-    stylisticContext = `Translate into modern "Urban Taglish" (Manila style). 
-    - MIXING: Seamlessly blend English and Tagalog as urban Filipinos do. 
-    - STYLE: Use modern inflections. 
-    - SLANG: Include current social media terms. 
-    - FLOW: It should sound like a casual chat message.`;
+    stylisticContext = `Urban Taglish style. Seamlessly blend English and Tagalog. Use modern urban inflections and social media slang.`;
   }
 
-  const sourceContext = sourceLang === 'auto' 
-    ? "the source language is unknown, please DETECT IT automatically" 
-    : `the source language is ${sourceLang}`;
+  const systemInstruction = `You are a high-speed linguistic engine specializing in cultural nuances and local vibes.
+    
+    RULES:
+    - Target Vibe: ${stylisticContext}
+    - Safety: Do not sexualize content unless explicitly in source. Treat slang expletives as intensifiers.
+    - Script: If the target language is non-Latin (CJK), provide a phonetic 'transliteration'.
+    - Tagalog Nuance: For non-formal modes, avoid "ay" linkers; use "parang" instead of "tila".
+    - Correction: Predict intended words if source has typos.
+    - Speed: Be concise. Response must be valid JSON.`;
 
-  const prompt = `
-    Translate the following text from ${sourceContext} to ${targetLang}.
-    
-    STYLE REQUIREMENT: 
-    ${stylisticContext}
-    
-    SMART CORRECTION & SANITY GUARD:
-    - The source text may contain spelling errors. Predict the intended word.
-    - CRITICAL: DO NOT sexualize the translation unless the source text is explicitly and unmistakably sexual. 
-    - If the user uses "shit" or other common expletives as intensifiers (e.g., "intense shit"), treat them as exclamations of intensity or the literal act. 
-    - NEVER map "shit" to anatomical references unless specified.
-    
-    TRANSLITERATION REQUIREMENT:
-    - If ${targetLang} uses non-Latin characters (like Chinese Hanzi, Japanese Kanji/Kana, or Korean Hangul), you MUST provide a phonetic pronunciation in the 'transliteration' field (e.g., Pinyin for Chinese, Romaji for Japanese). 
-    - If the target language uses Latin script, leave 'transliteration' empty or null.
-
-    CRITICAL FOR TAGALOG: 
-    - If mode is NOT formal, NEVER use "ay" as a linker if it can be avoided. 
-    - Use "parang" instead of "tila".
-    
-    Text to translate: "${text}"
-  `;
+  const sourceContext = sourceLang === 'auto' ? "Detect language automatically" : `Source language: ${sourceLang}`;
+  const prompt = `Translate this from ${sourceContext} to ${targetLang}: "${text}"`;
 
   try {
     const responseStream = await ai.models.generateContentStream({
-      model,
-      contents: prompt,
+      model: modelName,
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
+        systemInstruction,
         thinkingConfig: { thinkingBudget: 0 },
         responseMimeType: "application/json",
         responseSchema: {
@@ -69,15 +47,15 @@ export const translateWithSlangStream = async (
           properties: {
             translatedText: {
               type: Type.STRING,
-              description: "The main script translation.",
+              description: "The primary translation.",
             },
             transliteration: {
               type: Type.STRING,
-              description: "Phonetic guide (e.g., Pinyin, Romaji) if symbols are used.",
+              description: "Phonetic guide for non-Latin scripts.",
             },
             explanation: {
               type: Type.STRING,
-              description: "Brief note on corrections or nuance.",
+              description: "Brief nuance note.",
             },
             slangUsed: {
               type: Type.ARRAY,
@@ -90,16 +68,9 @@ export const translateWithSlangStream = async (
                 },
                 required: ["term", "meaning", "context"]
               },
-              description: "Shortcuts or slang used.",
             },
-            vibe: {
-              type: Type.STRING,
-              description: "The specific sub-vibe.",
-            },
-            detectedLanguage: {
-              type: Type.STRING,
-              description: "The name of the language detected from the input text (e.g., 'English', 'Tagalog'). Only needed if sourceLang was 'auto'.",
-            }
+            vibe: { type: Type.STRING },
+            detectedLanguage: { type: Type.STRING },
           },
           required: ["translatedText", "explanation", "slangUsed", "vibe"],
         },
@@ -108,13 +79,13 @@ export const translateWithSlangStream = async (
 
     let fullText = "";
     for await (const chunk of responseStream) {
-      const c = chunk as GenerateContentResponse;
-      const part = c.text;
+      const part = chunk.text;
       if (part) {
         fullText += part;
+        // Faster extraction of the first property which is always translatedText
         const match = fullText.match(/"translatedText":\s*"((?:[^"\\]|\\.)*)"/);
         if (match && match[1]) {
-          onChunk(match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'));
+          onChunk(match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
         }
       }
     }
@@ -139,6 +110,7 @@ export const translateWithSlang = async (
 };
 
 export const speakText = async (text: string, voiceName: string = 'Kore') => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
